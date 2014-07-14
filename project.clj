@@ -10,11 +10,11 @@
 
   :aliases
   {"ci-build"
-   ^{:doc "Perform the Continuous Integration build and deploy"}
-   ["do" ["clean"] ["check"] ["midje"] ["clean"] ["deploy"]]
+   ^{:doc "Perform the Continuous Integration build"}
+   ["do" ["clean"] ["check"] ["midje"]]
 
    "dev-check"
-   ^{:doc "Perform the Continuous Integration build and deploy"}
+   ^{:doc "Check a build before commits"}
    ["do" ["clean"] ["check"] ["midje"] ["clean"]]
 
    "dev-repl"

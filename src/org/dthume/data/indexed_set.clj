@@ -60,7 +60,7 @@
   ISeq
   (first [_]
     (some-> merged first (nth 1) first))
-  (more [this] ;; TODO FIXME
+  (more [this]
     (let [f (first merged)]
       (TrackingSet.
        target base
