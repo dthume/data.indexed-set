@@ -21,6 +21,120 @@
   [s k]
   (some-> s (get-index k) get-data))
 
+(defn primary-index
+  [x]
+  (reify Index
+    (get-data [_] x)))
+
+(deftype StoppedIndexSet [primary indexes mdata]
+  Object
+  (equals [_ x] (.equals primary x))
+  (hashCode [_] (.hashCode primary))
+
+  IHashEq
+  (hasheq [this]
+    (hash primary))
+
+  clojure.lang.IObj
+  (meta [_] mdata)
+  (withMeta [_ mdata]
+    (StoppedIndexSet. primary indexes mdata))
+
+  Seqable
+  (seq [this] (seq primary))
+
+  IPersistentCollection
+  (cons [this value]
+    (if (contains? primary value)
+      this
+      (StoppedIndexSet. (conj primary value) indexes mdata)))
+  (empty [this]
+    (if (empty? primary)
+      this
+      (StoppedIndexSet. (empty primary) indexes mdata)))
+  (equiv [this x] (.equals this x))
+
+  ISeq
+  (first [_] (first primary))
+  (more [this]
+    (let [f (first primary)
+          r (rest primary)]
+      (StoppedIndexSet. r indexes mdata)))
+  (next [this]
+    (if-let [t (next primary)]
+      (let [f (first primary)]
+        (StoppedIndexSet. t indexes mdata))))
+
+  Counted
+  (count [_] (count primary))
+
+  ILookup
+  (valAt [_ k notfound]
+    (get primary k notfound))
+  (valAt [this k]
+    (get primary k))
+
+  IPersistentSet
+  (disjoin [this k]
+    (if (contains? primary k)
+      (StoppedIndexSet. (disj primary k) indexes mdata)
+      this))
+  (get [this k] (.valAt this k nil))
+
+  java.util.Set
+  (contains [this x] (contains? primary x))
+  (containsAll [this xs] (every? #(contains? primary %) xs))
+  (isEmpty [_] (empty? primary))
+  (iterator [_]
+    (let [t (atom primary)]
+      (reify java.util.Iterator
+        (next [_] (let [f (first @t)]
+                    (swap! t next)
+                    f))
+        (hasNext [_] (boolean (first @t))))))
+  (size [this] (count this))
+  (toArray [_] nil)
+  (toArray [_ a] nil)
+  
+  IndexedSet
+  (index-keys [this] (conj (keys indexes) :primary))
+  (get-index [this k]
+    (if (= :primary k)
+      (primary-index primary)
+      (get indexes k)))
+  (assoc-index [this k idx]
+    (throw
+     (IllegalArgumentException. "Cannot add index to StoppedIndexSet")))
+  (dissoc-index [this k]
+    (when (= :primary k)
+      (throw
+       (IllegalArgumentException. "Cannot remove primary index")))
+    (StoppedIndexSet. primary
+      (dissoc indexes k)
+      mdata))
+
+  SetAlgebra
+  (set-union [lhs rhs]
+    (StoppedIndexSet. (set-union primary rhs)
+                      indexes
+                      mdata))
+  (set-intersection [lhs rhs]
+    (StoppedIndexSet. (set-intersection primary rhs)
+                      indexes
+                      mdata))
+  (set-difference [lhs rhs]
+    (StoppedIndexSet. (set-difference primary rhs)
+                      indexes
+                      mdata)))
+
+(defmethod print-method StoppedIndexSet
+  [^StoppedIndexSet o, ^java.io.Writer w]
+  (print-method (.primary o) w))
+
+(defmethod clojure.pprint/simple-dispatch StoppedIndexSet
+  [^StoppedIndexSet o]
+  (clojure.pprint/simple-dispatch (.primary o)))
+
 (deftype TrackingSet [target base changes merged mdata]
   Object
   (equals [_ x]
@@ -220,11 +334,6 @@
             (tuple k (apply f idx a1 a2 as)))
           (into {}))))
 
-(defn primary-index
-  [x]
-  (reify Index
-    (get-data [_] x)))
-
 (deftype DefaultIndexedSet [primary indexes mdata]
   Object
   (equals [_ x] (.equals primary x))
@@ -363,6 +472,10 @@
   [s]
   (commit-changes s))
 
+(defn stop-indexing
+  [^DefaultIndexedSet s]
+  (->StoppedIndexSet (.primary s) (.indexes s) (.mdata s)))
+
 (deftype UniqueIndex [key-fn idx mdata]
   Object
   (equals [_ x]
@@ -386,6 +499,12 @@
     (UniqueIndex. key-fn (assoc idx (key-fn value) value) mdata))
   (empty [this] (UniqueIndex. key-fn (empty idx) mdata))
   (equiv [this x] (.equals this x))
+
+  ILookup
+  (valAt [_ k notfound]
+    (get idx (key-fn k) notfound))
+  (valAt [this k]
+    (get idx (key-fn k)))
     
   Counted
   (count [_] (count idx))
@@ -460,6 +579,14 @@
   (empty [this]
     (GroupedIndex. key-fn empty-group (empty idx) mdata))
   (equiv [this x] (.equals this x))
+
+  ILookup
+  (valAt [_ k notfound]
+    (if (contains? (get idx (key-fn k) #{}) k)
+      k
+      notfound))
+  (valAt [this k]
+    (when (contains? (get idx (key-fn k) #{})) k))
   
   Counted
   (count [_] (reduce (fn [t [k v]] (+ t (count v))) 0 idx))
@@ -541,6 +668,12 @@
   (meta [_] mdata)
   (withMeta [_ mdata]
     (SetIndex. idx mdata))
+
+  ILookup
+  (valAt [_ k notfound]
+    (get idx k notfound))
+  (valAt [this k]
+    (get idx k))
   
   Seqable
   (seq [this] (vals idx))
