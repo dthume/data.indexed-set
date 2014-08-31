@@ -1,4 +1,4 @@
-(defproject org.dthume/data.indexed-set "0.1.0-SNAPSHOT"
+(defproject org.dthume/data.set-db "0.1.0-SNAPSHOT"
   :description "Indexed set type for clojure"
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [clj-tuple "0.1.6"]
