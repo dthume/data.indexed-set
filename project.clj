@@ -6,7 +6,10 @@
 
   :plugins [[lein-midje "3.0.0"]]
 
-  :profiles {:dev {:dependencies [[midje "1.6.3"]]}}
+  :profiles
+  {:dev
+   {:dependencies [[midje "1.6.3"]
+                   [org.clojure/core.logic "0.8.8"]]}}
 
   :aliases
   {"ci-build"

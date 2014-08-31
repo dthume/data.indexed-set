@@ -318,21 +318,16 @@
 
 (defn- mapidx
   ([indexes f]
-     (->> (for [[k idx] indexes]
-            (tuple k (f idx)))
-          (into {})))
+     (->> indexes
+          (r/reduce (fn [m k idx] (assoc! m k (f idx)))
+                    (transient {}))
+          persistent!))
   ([indexes f a1]
-     (->> (for [[k idx] indexes]
-            (tuple k (f idx a1)))
-          (into {})))
+     (mapidx indexes #(f % a1)))
   ([indexes f a1 a2]
-     (->> (for [[k idx] indexes]
-            (tuple k (f idx a1 a2)))
-          (into {})))
+     (mapidx indexes #(f % a1 a2)))
   ([indexes f a1 a2 & as]
-     (->> (for [[k idx] indexes]
-            (tuple k (apply f idx a1 a2 as)))
-          (into {}))))
+     (mapidx indexes #(apply f % a1 a2 as))))
 
 (deftype DefaultIndexedSet [primary indexes mdata]
   Object
@@ -443,9 +438,10 @@
       (mapidx indexes set-union rhs)
       mdata))
   (set-intersection [lhs rhs]
-    (DefaultIndexedSet. (set-intersection primary rhs)
-      (mapidx indexes set-intersection rhs)
-      mdata))
+    (let [removed (set-difference primary rhs)]
+      (DefaultIndexedSet. (set-difference primary removed)
+        (mapidx indexes set-difference removed)
+        mdata)))
   (set-difference [lhs rhs]
     (DefaultIndexedSet. (set-difference primary rhs)
       (mapidx indexes set-difference rhs)
@@ -522,7 +518,7 @@
     (UniqueIndex.
      key-fn
      (->> rhs
-          (map #(tuple (key-fn %1) %1))
+          (r/map #(tuple (key-fn %1) %1))
           (into idx))
      mdata))
   (set-intersection [_ rhs]
@@ -537,12 +533,12 @@
      key-fn
      (if (instance? clojure.lang.IEditableCollection idx)
        (->> rhs
-            (map key-fn)
-            (reduce dissoc! (transient idx))
+            (r/map key-fn)
+            (r/reduce dissoc! (transient idx))
             persistent!)
        (->> rhs
-            (map key-fn)
-            (reduce dissoc idx)))
+            (r/map key-fn)
+            (r/reduce dissoc idx)))
      mdata)))
 
 (defn unique-index
@@ -571,33 +567,43 @@
   
   IPersistentCollection
   (cons [this value]
-    (GroupedIndex.
-     key-fn empty-group
-     (update-in idx (tuple (key-fn value))
-                (fnil conj empty-group) value)
-     mdata))
+    (if-some [k (key-fn value)]
+      (GroupedIndex.
+       key-fn empty-group
+       (update-in idx (tuple (key-fn value))
+                  (fnil conj empty-group) value)
+       mdata)
+      this))
   (empty [this]
     (GroupedIndex. key-fn empty-group (empty idx) mdata))
   (equiv [this x] (.equals this x))
 
   ILookup
   (valAt [_ k notfound]
-    (if (contains? (get idx (key-fn k) #{}) k)
-      k
-      notfound))
+    (let [kk (key-fn k)]
+      (if (and kk (contains? (get idx kk #{}) k))
+        k
+        notfound)))
   (valAt [this k]
-    (when (contains? (get idx (key-fn k) #{})) k))
+    (let [kk (key-fn k)]
+      (when (contains? (get idx kk #{}) k)
+        k)))
   
   Counted
-  (count [_] (reduce (fn [t [k v]] (+ t (count v))) 0 idx))
+  (count [_] (r/reduce #(+ %1 (count %3)) 0 idx))
   
   IPersistentSet
   (disjoin [this k]
-    (GroupedIndex.
-     key-fn empty-group
-     (update-in idx (tuple (key-fn k))
-                disj k)
-     mdata))
+    (if-some [kk (key-fn k)]
+      (GroupedIndex.
+       key-fn empty-group
+       (let [old     (get idx kk empty-group)
+             updated (disj old k)]
+         (if (seq updated)
+           (assoc idx kk updated)
+           (dissoc idx kk)))
+       mdata)
+      this))
   (get [this k] (.valAt this k nil))
   
   Index
@@ -609,10 +615,11 @@
      key-fn empty-group
      (->> rhs
           (group-by key-fn)
-          (reduce (fn [m [k v]]
-                    (update-in m (tuple k)
-                               (fnil set-union empty-group)
-                               v))
+          (r/reduce (fn [m k v]
+                      (if (nil? k) m
+                          (update-in m (tuple k)
+                                     (fnil set-union empty-group)
+                                     v)))
                   idx))
      mdata))
   (set-intersection [_ rhs]
@@ -620,30 +627,31 @@
      key-fn empty-group
      (->> rhs
           (group-by key-fn)
-          (reduce (fn [m [k v]]
-                    (let [nm 
-                          (update-in m (tuple k)
-                                     (fnil set-intersection empty-group)
-                                     v)]
-                      (if (-> nm (get k) empty?)
-                        (dissoc nm k)
-                        nm)))
-                  idx))
+          (r/reduce
+           (fn [m k v]
+             (if (nil? k) m
+                 (let [nm (update-in
+                           m (tuple k)
+                           (fnil set-intersection empty-group) v)]
+                   (if (-> nm (get k) empty?)
+                     (dissoc nm k)
+                     nm))))
+           idx))
      mdata))
   (set-difference [_ rhs]
     (GroupedIndex.
      key-fn empty-group
      (->> rhs
           (group-by key-fn)
-          (reduce (fn [m [k v]]
-                    (let [nm 
-                          (update-in m (tuple k)
-                                     (fnil set-difference empty-group)
-                                     v)]
-                      (if (-> nm (get k) empty?)
-                        (dissoc nm k)
-                        nm)))
-                  idx))
+          (r/reduce
+           (fn [m k v]
+             (if (nil? k) m
+                 (let [old     (get m k empty-group)
+                       updated (set-difference old v)]
+                   (if (seq updated)
+                     (assoc m k updated)
+                     (dissoc m k)))))
+           idx))
      mdata)))
 
 (defn grouped-index
@@ -710,6 +718,7 @@
 
 (defn set-index
   ([]
+
      (set-index #{}))
   ([base]
      (SetIndex. base {})))
