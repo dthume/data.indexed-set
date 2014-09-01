@@ -9,7 +9,7 @@
 
 (defn- apply-rels
   [db f rels]
-  (r/reduce #(apply f %1 %&) db rels))
+  (r/reduce #(apply f %1 %2) db rels))
 
 (declare with-db with-rels)
 
@@ -75,7 +75,7 @@
 
 (defn pldb-index
   ([as-rels]
-     (pldb-index pldb/empty-db as-rels))
-  ([base as-rels]
+     (pldb-index as-rels pldb/empty-db))
+  ([as-rels base]
      (PldbIndex. base as-rels {})))
 
