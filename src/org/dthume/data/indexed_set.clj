@@ -684,13 +684,11 @@
     (get idx k))
   
   Seqable
-  (seq [this] (vals idx))
+  (seq [this] (seq idx))
   
   IPersistentCollection
   (cons [this value]
-    (if (contains? idx value)
-      this
-      (SetIndex. (conj idx value) mdata)))
+    (SetIndex. (conj idx value) mdata))
   (empty [this]
     (SetIndex. (empty idx) mdata))
   (equiv [this x] (.equals this x))
@@ -700,9 +698,7 @@
   
   IPersistentSet
   (disjoin [this k]
-    (if (contains? idx k)
-      (SetIndex. (disj idx k) mdata)
-      this))
+    (SetIndex. (disj idx k) mdata))
   (get [this k] (.valAt this k nil))
   
   Index
@@ -718,7 +714,6 @@
 
 (defn set-index
   ([]
-
      (set-index #{}))
   ([base]
      (SetIndex. base {})))
