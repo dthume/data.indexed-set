@@ -1,4 +1,4 @@
-(defproject org.dthume/data.set-db "0.1.1-SNAPSHOT"
+(defproject org.dthume/data.set-db "0.1.1"
   :description "Indexed set type for clojure"
   :url "http://github.com/dthume/data.indexed-set"
   :license "Eclipse Public License 1.0"
