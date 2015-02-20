@@ -7,11 +7,7 @@
    (clojure.lang Counted IHashEq ILookup IPersistentCollection
                  IPersistentSet IObj ISeq Seqable Sequential)))
 
-(defn- apply-rels
-  [db f rels]
-  (r/reduce #(apply f %1 %2) db rels))
-
-(declare with-db with-rels)
+(declare maybe-apply-rels with-db with-rels)
 
 (deftype PldbIndex [db as-rels mdata]
   Object
@@ -50,28 +46,42 @@
 
   SetAlgebra
   (set-union [this rhs]
-    (->> rhs
-         (mapcat as-rels)
-         (apply-rels db pldb/db-fact)
-         (with-db this)))
+    (maybe-apply-rels this pldb/db-fact as-rels rhs))
   (set-intersection [_ rhs]
     (throw (UnsupportedOperationException.)))
   (set-difference [this rhs]
-    (->> rhs
-         (mapcat as-rels)
-         (apply-rels db pldb/db-retraction)
-         (with-db this))))
+    (maybe-apply-rels this pldb/db-retraction as-rels rhs)))
 
 (defn- with-db
   [^PldbIndex this db]
   (PldbIndex. db (.as-rels this) (.mdata this)))
 
+(defn- apply-rels
+  [db f rels]
+  (r/reduce #(apply f %1 %2) db rels))
+
 (defn- with-rels
   [^PldbIndex this f v]
-  (->> v
-       ((.as-rels this))
-       (apply-rels (.db this) f)
-       (with-db this)))
+  (if-let [rels (not-empty ((.as-rels this) v))]
+    (->> rels
+         (apply-rels (.db this) f)
+         (with-db this))
+    this))
+
+(defn- set->rels
+  [as-rels rels]
+  (->> rels
+       (r/mapcat as-rels)
+       (into [])
+       not-empty))
+
+(defn- maybe-apply-rels
+  [^PldbIndex this f as-rels rel-source]
+  (if-let [rels (set->rels as-rels rel-source)]
+    (->> rels
+         (apply-rels (.db this) f)
+         (with-db this))
+    this))
 
 (defn pldb-index
   ([as-rels]

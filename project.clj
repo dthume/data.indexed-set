@@ -3,7 +3,7 @@
   :url "http://github.com/dthume/data.indexed-set"
   :license "Eclipse Public License 1.0"
   :dependencies [[org.clojure/clojure "1.6.0"]
-                 [clj-tuple "0.1.6"]
+                 [clj-tuple "0.2.0"]
                  [org.dthume/data.set "0.1.1"]]
 
   :plugins [[lein-midje "3.0.0"]]

@@ -1,12 +1,15 @@
 (ns org.dthume.data.indexed-set
-  (:require [clj-tuple :refer (tuple)]
-			(clojure.core [reducers :as r])
+  (:require [clj-tuple]
+            (clojure.core [reducers :as r])
             [clojure.set]
             [clojure.pprint]
             [org.dthume.data.set :as set :refer :all])
   (:import (clojure.lang Seqable Sequential ISeq IPersistentSet ILookup
                          IPersistentStack IPersistentCollection Associative
                          Counted IHashEq)))
+
+(def tuple clj-tuple/vector)
+(def empty-map (clj-tuple/hash-map))
 
 (defprotocol Index
   (get-data [this] "Get the index data for `this` index"))
@@ -295,7 +298,7 @@
   ([target base]
      (TrackingSet. target base
                    (TrackedChanges. #{} #{})
-                   base {})))
+                   base empty-map)))
 
 (defn tracked-changes
   [^TrackingSet ts]
@@ -320,7 +323,7 @@
   ([indexes f]
      (->> indexes
           (r/reduce (fn [m k idx] (assoc! m k (f idx)))
-                    (transient {}))
+                    (transient empty-map))
           persistent!))
   ([indexes f a1]
      (mapidx indexes #(f % a1)))
@@ -458,7 +461,7 @@
   [& {:as conf}]
   (let [{:keys [primary]
          :or {primary #{}}} conf]
-    (DefaultIndexedSet. primary {} {})))
+    (DefaultIndexedSet. primary empty-map empty-map)))
 
 (defn pause-indexing
   [^DefaultIndexedSet s]
@@ -543,9 +546,9 @@
 
 (defn unique-index
   ([key-fn]
-     (unique-index key-fn {}))
+   (unique-index key-fn empty-map))
   ([key-fn base]
-     (UniqueIndex. key-fn base {})))
+   (UniqueIndex. key-fn base empty-map)))
 
 (deftype GroupedIndex [key-fn empty-group idx mdata]
   Object
@@ -656,11 +659,11 @@
 
 (defn grouped-index
   ([key-fn]
-     (grouped-index key-fn {}))
+     (grouped-index key-fn empty-map))
   ([key-fn base]
      (grouped-index key-fn base #{}))
   ([key-fn base empty-group]
-     (GroupedIndex. key-fn empty-group base {})))
+     (GroupedIndex. key-fn empty-group base empty-map)))
 
 (deftype SetIndex [idx mdata]
   Object
@@ -716,4 +719,4 @@
   ([]
      (set-index #{}))
   ([base]
-     (SetIndex. base {})))
+     (SetIndex. base empty-map)))
